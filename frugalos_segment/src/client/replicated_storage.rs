@@ -2,6 +2,7 @@ use cannyls::deadline::Deadline;
 use cannyls::lump::LumpData;
 use cannyls_rpc::Client as CannyLsClient;
 use cannyls_rpc::DeviceId;
+use fibers::Spawn;
 use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
 use frugalos_raft::NodeId;
 use futures::{Async, Future, Poll};
@@ -18,20 +19,25 @@ use util::BoxFuture;
 use {Error, ErrorKind};
 
 #[derive(Debug, Clone)]
-pub struct ReplicatedClient {
+pub struct ReplicatedClient<S> {
     metrics: ReplicatedClientMetrics,
     cluster: Arc<ClusterConfig>,
     config: ReplicatedConfig,
     client_config: ReplicatedClientConfig,
     rpc_service: RpcServiceHandle,
+    spawner: S,
 }
-impl ReplicatedClient {
+impl<S> ReplicatedClient<S>
+where
+    S: Spawn + Send + Clone,
+{
     pub fn new(
         metrics: ReplicatedClientMetrics,
         cluster: ClusterConfig,
         config: ReplicatedConfig,
         client_config: ReplicatedClientConfig,
         rpc_service: RpcServiceHandle,
+        spawner: S,
     ) -> Self {
         ReplicatedClient {
             metrics,
@@ -39,6 +45,7 @@ impl ReplicatedClient {
             config,
             client_config,
             rpc_service,
+            spawner,
         }
     }
     pub fn get_fragment(

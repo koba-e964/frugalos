@@ -1,4 +1,5 @@
 use cannyls::device::DeviceHandle;
+use fibers::Spawn;
 use frugalos_mds::Event;
 use frugalos_raft::NodeId;
 use futures::{Async, Future, Poll, Stream};
@@ -15,11 +16,11 @@ use service::ServiceHandle;
 use Error;
 
 // TODO: 起動直後の確認は`device.list()`の結果を使った方が効率的
-pub struct Synchronizer {
+pub struct Synchronizer<S> {
     logger: Logger,
     node_id: NodeId,
     device: DeviceHandle,
-    client: StorageClient,
+    client: StorageClient<S>,
     segment_gc_metrics: SegmentGcMetrics,
     segment_gc: Option<SegmentGc>,
     segment_gc_step: u64,
@@ -27,15 +28,18 @@ pub struct Synchronizer {
     // general-purpose queue.
     general_queue: GeneralQueueExecutor,
     // repair-only queue.
-    repair_queue: RepairQueueExecutor,
+    repair_queue: RepairQueueExecutor<S>,
 }
-impl Synchronizer {
+impl<S> Synchronizer<S>
+where
+    S: Spawn + Send + Clone + 'static,
+{
     pub fn new(
         logger: Logger,
         node_id: NodeId,
         device: DeviceHandle,
-        service_handle: ServiceHandle,
-        client: StorageClient,
+        service_handle: ServiceHandle<S>,
+        client: StorageClient<S>,
         segment_gc_step: u64,
     ) -> Self {
         let metric_builder = MetricBuilder::new()
@@ -151,7 +155,10 @@ impl Synchronizer {
             .set_repair_idleness_threshold(repair_idleness_threshold);
     }
 }
-impl Future for Synchronizer {
+impl<S> Future for Synchronizer<S>
+where
+    S: Spawn + Send + Clone + 'static,
+{
     type Item = ();
     type Error = Error;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {

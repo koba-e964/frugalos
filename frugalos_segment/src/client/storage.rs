@@ -2,6 +2,7 @@
 use adler32;
 use byteorder::{BigEndian, ByteOrder};
 use cannyls::deadline::Deadline;
+use fibers::Spawn;
 use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
 use fibers_tasque::DefaultCpuTaskQueue;
 use frugalos_raft::NodeId;
@@ -24,17 +25,21 @@ use util::BoxFuture;
 use {Error, ErrorKind, ObjectValue, Result};
 
 #[derive(Clone)]
-pub enum StorageClient {
+pub enum StorageClient<S> {
     Metadata,
-    Replicated(ReplicatedClient),
-    Dispersed(DispersedClient),
+    Replicated(ReplicatedClient<S>),
+    Dispersed(DispersedClient<S>),
 }
-impl StorageClient {
+impl<S> StorageClient<S>
+where
+    S: Spawn + Send + Clone,
+{
     pub fn new(
         logger: Logger,
         config: ClientConfig,
         rpc_service: RpcServiceHandle,
         ec: Option<ErasureCoder>,
+        spawner: S,
     ) -> Result<Self> {
         use config::Storage;
         match config.storage {
@@ -47,6 +52,7 @@ impl StorageClient {
                     c,
                     config.replicated_client,
                     rpc_service,
+                    spawner,
                 )))
             }
             Storage::Dispersed(c) => {
@@ -59,6 +65,7 @@ impl StorageClient {
                     config.dispersed_client,
                     rpc_service,
                     ec,
+                    spawner,
                 )))
             }
         }

@@ -1,3 +1,4 @@
+use fibers::Spawn;
 use futures::future::{ok, Either, Loop};
 use futures::Future;
 use rustracing::tag::Tag;
@@ -8,8 +9,8 @@ use std::cmp::min;
 use client::FrugalosClient;
 
 #[allow(clippy::too_many_arguments)]
-pub fn put_many_objects<E>(
-    client: FrugalosClient,
+pub fn put_many_objects<E, S>(
+    client: FrugalosClient<S>,
     parent: Span,
     logger: Logger,
     bucket_id: String,
@@ -18,7 +19,10 @@ pub fn put_many_objects<E>(
     object_count: usize,
     concurrency: usize,
     content: Vec<u8>,
-) -> impl Future<Item = (), Error = E> {
+) -> impl Future<Item = (), Error = E>
+where
+    S: Spawn + Send + Clone + 'static,
+{
     futures::future::loop_fn(
         (
             0,

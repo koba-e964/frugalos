@@ -2,6 +2,7 @@ use bytecodec::bytes::{BytesEncoder, RemainingBytesDecoder};
 use bytecodec::json_codec::JsonEncoder;
 use bytecodec::null::NullDecoder;
 use cannyls::deadline::Deadline;
+use fibers::Spawn;
 use fibers_http_server::metrics::WithMetrics;
 use fibers_http_server::{
     HandleRequest, Reply, Req, Res, ServerBuilder as HttpServerBuilder, Status,
@@ -67,20 +68,23 @@ macro_rules! try_badarg_option {
 }
 
 #[derive(Clone)]
-pub struct Server {
+pub struct Server<S> {
     logger: Logger,
     config: FrugalosConfig,
-    client: FrugalosClient,
+    client: FrugalosClient<S>,
     tracer: ThreadLocalTracer,
 
     // TODO: remove
     large_object_count: Arc<AtomicUsize>,
 }
-impl Server {
+impl<S> Server<S>
+where
+    S: Spawn + Send + Clone + 'static,
+{
     pub fn new(
         logger: Logger,
         config: FrugalosConfig,
-        client: FrugalosClient,
+        client: FrugalosClient<S>,
         tracer: ThreadLocalTracer,
     ) -> Self {
         Server {
@@ -107,8 +111,11 @@ impl Server {
     }
 }
 
-struct ListSegments(Server);
-impl HandleRequest for ListSegments {
+struct ListSegments<S>(Server<S>);
+impl<S> HandleRequest for ListSegments<S>
+where
+    S: Spawn + Send + Clone + 'static,
+{
     const METHOD: &'static str = "GET";
     const PATH: &'static str = "/v1/buckets/*/segments";
 
@@ -130,8 +137,11 @@ impl HandleRequest for ListSegments {
     }
 }
 
-struct ListObjects(Server);
-impl HandleRequest for ListObjects {
+struct ListObjects<S>(Server<S>);
+impl<S> HandleRequest for ListObjects<S>
+where
+    S: Spawn + Send + Clone + 'static,
+{
     const METHOD: &'static str = "GET";
     const PATH: &'static str = "/v1/buckets/*/segments/*/objects";
 
@@ -163,8 +173,11 @@ impl HandleRequest for ListObjects {
     }
 }
 
-struct GetBucketStatistics(Server);
-impl HandleRequest for GetBucketStatistics {
+struct GetBucketStatistics<S>(Server<S>);
+impl<S> HandleRequest for GetBucketStatistics<S>
+where
+    S: Spawn + Send + Clone + 'static,
+{
     const METHOD: &'static str = "GET";
     const PATH: &'static str = "/v1/buckets/*/stats";
 
@@ -206,8 +219,11 @@ impl HandleRequest for GetBucketStatistics {
     }
 }
 
-struct GetObject(Server);
-impl HandleRequest for GetObject {
+struct GetObject<S>(Server<S>);
+impl<S> HandleRequest for GetObject<S>
+where
+    S: Spawn + Send + Clone + 'static,
+{
     const METHOD: &'static str = "GET";
     const PATH: &'static str = "/v1/buckets/*/objects/*";
 
@@ -282,8 +298,11 @@ impl HandleRequest for GetObject {
     }
 }
 
-struct HeadObject(Server);
-impl HandleRequest for HeadObject {
+struct HeadObject<S>(Server<S>);
+impl<S> HandleRequest for HeadObject<S>
+where
+    S: Spawn + Send + Clone + 'static,
+{
     const METHOD: &'static str = "HEAD";
     const PATH: &'static str = "/v1/buckets/*/objects/*";
 
@@ -364,8 +383,11 @@ impl HandleRequest for HeadObject {
     }
 }
 
-struct DeleteObject(Server);
-impl HandleRequest for DeleteObject {
+struct DeleteObject<S>(Server<S>);
+impl<S> HandleRequest for DeleteObject<S>
+where
+    S: Spawn + Send + Clone + 'static,
+{
     const METHOD: &'static str = "DELETE";
     const PATH: &'static str = "/v1/buckets/*/objects/*";
 
@@ -440,8 +462,11 @@ impl HandleRequest for DeleteObject {
     }
 }
 
-struct DeleteObjectByPrefix(Server);
-impl HandleRequest for DeleteObjectByPrefix {
+struct DeleteObjectByPrefix<S>(Server<S>);
+impl<S> HandleRequest for DeleteObjectByPrefix<S>
+where
+    S: Spawn + Send + Clone + 'static,
+{
     const METHOD: &'static str = "DELETE";
     const PATH: &'static str = "/v1/buckets/*/object_prefixes/*";
 
@@ -501,8 +526,11 @@ impl HandleRequest for DeleteObjectByPrefix {
     }
 }
 
-struct PutObject(Server);
-impl HandleRequest for PutObject {
+struct PutObject<S>(Server<S>);
+impl<S> HandleRequest for PutObject<S>
+where
+    S: Spawn + Send + Clone + 'static,
+{
     const METHOD: &'static str = "PUT";
     const PATH: &'static str = "/v1/buckets/*/objects/*";
 
@@ -610,8 +638,11 @@ impl HandleRequest for PutObject {
     }
 }
 
-struct PutManyObject(Server);
-impl HandleRequest for PutManyObject {
+struct PutManyObject<S>(Server<S>);
+impl<S> HandleRequest for PutManyObject<S>
+where
+    S: Spawn + Send + Clone + 'static,
+{
     const METHOD: &'static str = "PUT";
     const PATH: &'static str = "/v1/buckets/*/many_objects/*";
 

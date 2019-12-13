@@ -6,6 +6,7 @@ use cannyls_rpc::DeviceId;
 use ecpool::liberasurecode::LibErasureCoderBuilder;
 use ecpool::ErasureCoderPool;
 use fibers::time::timer;
+use fibers::Spawn;
 use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
 use frugalos_core::tracer::SpanExt;
 use frugalos_raft::NodeId;
@@ -30,7 +31,7 @@ use util::{BoxFuture, Phase};
 use {Error, ErrorKind, Result};
 
 #[derive(Clone)]
-pub struct DispersedClient {
+pub struct DispersedClient<S> {
     logger: Logger,
     metrics: DispersedClientMetrics,
     cluster: Arc<ClusterConfig>,
@@ -39,8 +40,12 @@ pub struct DispersedClient {
     data_fragments: usize,
     ec: ErasureCoder,
     rpc_service: RpcServiceHandle,
+    spawner: S,
 }
-impl DispersedClient {
+impl<S> DispersedClient<S>
+where
+    S: Spawn + Send + Clone,
+{
     pub fn new(
         logger: Logger,
         metrics: DispersedClientMetrics,
@@ -49,6 +54,7 @@ impl DispersedClient {
         client_config: DispersedClientConfig,
         rpc_service: RpcServiceHandle,
         ec: Option<ErasureCoder>,
+        spawner: S,
     ) -> Self {
         let parity_fragments = config.tolerable_faults as usize;
         let data_fragments = config.fragments as usize - parity_fragments;
@@ -62,6 +68,7 @@ impl DispersedClient {
             ec,
             data_fragments,
             rpc_service,
+            spawner,
         }
     }
     pub fn get_fragment(

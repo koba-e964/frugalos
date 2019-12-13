@@ -1,4 +1,5 @@
 #![allow(clippy::ptr_arg)]
+use fibers::Spawn;
 use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
 use frugalos_segment::config::ClusterMember;
 use frugalos_segment::Client as Segment;
@@ -12,20 +13,24 @@ use std::iter;
 use Result;
 
 #[derive(Clone)]
-pub struct Bucket {
+pub struct Bucket<S> {
     logger: Logger,
     rpc_service: RpcServiceHandle,
     ec: Option<ErasureCoder>,
     storage_config: frugalos_segment::config::Storage,
     segment_config: FrugalosSegmentConfig,
-    segments: Vec<Segment>,
+    segments: Vec<Segment<S>>,
 }
-impl Bucket {
+impl<S> Bucket<S>
+where
+    S: Spawn + Send + 'static,
+{
     pub fn new(
         logger: Logger,
         rpc_service: RpcServiceHandle,
         config: &BucketConfig,
         segment_config: FrugalosSegmentConfig,
+        spawner: S,
     ) -> Result<Self> {
         let ec = match config {
             BucketConfig::Metadata(_) => None,
@@ -67,6 +72,7 @@ impl Bucket {
             rpc_service.clone(),
             client_config,
             ec.clone(),
+            spawner,
         ))?;
         let segments = iter::repeat(segment)
             .take(config.segment_count() as usize)
@@ -80,7 +86,12 @@ impl Bucket {
             segment_config,
         })
     }
-    pub fn update_segment(&mut self, segment_no: u16, members: Vec<ClusterMember>) -> Result<()> {
+    pub fn update_segment(
+        &mut self,
+        segment_no: u16,
+        members: Vec<ClusterMember>,
+        spawner: S,
+    ) -> Result<()> {
         let segment_config = frugalos_segment::config::ClientConfig {
             cluster: frugalos_segment::config::ClusterConfig { members },
             dispersed_client: self.segment_config.dispersed_client.clone(),
@@ -93,18 +104,19 @@ impl Bucket {
             self.rpc_service.clone(),
             segment_config,
             self.ec.clone(),
+            spawner,
         ))?;
         self.segments[segment_no as usize] = segment;
         Ok(())
     }
-    pub fn get_segment(&self, id: &ObjectId) -> &Segment {
+    pub fn get_segment(&self, id: &ObjectId) -> &Segment<S> {
         use std::hash::{Hash, Hasher};
         let mut hasher = siphasher::sip::SipHasher13::new();
         id.hash(&mut hasher);
         let i = hasher.finish() as usize % self.segments.len();
         &self.segments[i]
     }
-    pub fn segments(&self) -> &[Segment] {
+    pub fn segments(&self) -> &[Segment<S>] {
         &self.segments
     }
 }

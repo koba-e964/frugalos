@@ -2,6 +2,7 @@ use cannyls::deadline::Deadline;
 use cannyls::device::DeviceHandle;
 use cannyls::lump::LumpHeader;
 use client::storage::{GetFragment, MaybeFragment, StorageClient};
+use fibers::Spawn;
 use frugalos_raft::NodeId;
 use futures::{Async, Future, Poll};
 use libfrugalos::entity::object::ObjectVersion;
@@ -137,22 +138,25 @@ impl Future for RepairPrepContent {
 // なおバケツの種別が`metadata`の場合には、復元は不要.
 // `replicated`の場合には、クラスタ内の任意の一つのノードからコピーすれば良い
 // (クラスタ構成変更によって、完全にノード構成が変わった場合にだけ注意が必要).
-pub(crate) struct RepairContent {
+pub(crate) struct RepairContent<S> {
     logger: Logger,
     node_id: NodeId,
     version: ObjectVersion,
-    client: StorageClient,
+    client: StorageClient<S>,
     device: DeviceHandle,
     started_at: Instant,
     repair_metrics: RepairMetrics,
     phase: Phase3<BoxFuture<Option<LumpHeader>>, GetFragment, BoxFuture<bool>>,
 }
-impl RepairContent {
+impl<S> RepairContent<S>
+where
+    S: Spawn + Send + Clone + 'static,
+{
     pub fn new(
         logger: &Logger,
         device: &DeviceHandle,
         node_id: NodeId,
-        client: &StorageClient,
+        client: &StorageClient<S>,
         repair_metrics: &RepairMetrics,
         version: ObjectVersion,
     ) -> Self {
@@ -179,7 +183,10 @@ impl RepairContent {
         }
     }
 }
-impl Future for RepairContent {
+impl<S> Future for RepairContent<S>
+where
+    S: Spawn + Send + Clone + 'static,
+{
     type Item = ();
     type Error = Error;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {

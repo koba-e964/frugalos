@@ -1,4 +1,5 @@
 use cannyls::device::DeviceHandle;
+use fibers::Spawn;
 use frugalos_raft::NodeId;
 use futures::{Async, Future, Poll};
 use libfrugalos::entity::object::ObjectVersion;
@@ -15,11 +16,11 @@ use service::{RepairLock, ServiceHandle};
 use Error;
 
 #[allow(clippy::large_enum_variant)]
-enum Task {
+enum Task<S> {
     Idle,
-    Repair(RepairContent, RepairLock),
+    Repair(RepairContent<S>, RepairLock),
 }
-impl Task {
+impl<S> Task<S> {
     fn is_sleeping(&self) -> bool {
         match self {
             Task::Idle => true,
@@ -27,7 +28,10 @@ impl Task {
         }
     }
 }
-impl Future for Task {
+impl<S> Future for Task<S>
+where
+    S: Spawn + Send + Clone + 'static,
+{
     type Item = ();
     type Error = Error;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
@@ -39,13 +43,13 @@ impl Future for Task {
 }
 
 /// 若い番号のオブジェクトから順番にリペアするためのキュー。
-pub(crate) struct RepairQueueExecutor {
+pub(crate) struct RepairQueueExecutor<S> {
     logger: Logger,
     node_id: NodeId,
     device: DeviceHandle,
-    client: StorageClient,
-    service_handle: ServiceHandle,
-    task: Task,
+    client: StorageClient<S>,
+    service_handle: ServiceHandle<S>,
+    task: Task<S>,
     queue: BTreeSet<ObjectVersion>,
     // The idleness threshold for repair functionality.
     repair_idleness_threshold: RepairIdleness,
@@ -54,14 +58,17 @@ pub(crate) struct RepairQueueExecutor {
     enqueued_repair: Counter,
     dequeued_repair: Counter,
 }
-impl RepairQueueExecutor {
+impl<S> RepairQueueExecutor<S>
+where
+    S: Spawn + Send + Clone + 'static,
+{
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         logger: &Logger,
         node_id: NodeId,
         device: &DeviceHandle,
-        client: &StorageClient,
-        service_handle: &ServiceHandle,
+        client: &StorageClient<S>,
+        service_handle: &ServiceHandle<S>,
         metric_builder: &MetricBuilder,
         enqueued_repair: &Counter,
         dequeued_repair: &Counter,
@@ -104,7 +111,10 @@ impl RepairQueueExecutor {
         self.repair_idleness_threshold = repair_idleness_threshold;
     }
 }
-impl Future for RepairQueueExecutor {
+impl<S> Future for RepairQueueExecutor<S>
+where
+    S: Spawn + Send + Clone + 'static,
+{
     type Item = Infallible; // This executor will never finish normally.
     type Error = Infallible;
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {

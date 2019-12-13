@@ -2,6 +2,7 @@
 #![allow(clippy::needless_pass_by_value)]
 use atomic_immut::AtomicImmut;
 use cannyls::deadline::Deadline;
+use fibers::Spawn;
 use frugalos_segment::ObjectValue;
 use futures::{self, Future};
 use libfrugalos::consistency::ReadConsistency;
@@ -24,14 +25,17 @@ use {Error, ErrorKind};
 type BoxFuture<T> = Box<dyn Future<Item = T, Error = Error> + Send + 'static>;
 
 #[derive(Clone)]
-pub struct FrugalosClient {
-    buckets: Arc<AtomicImmut<HashMap<BucketId, Bucket>>>,
+pub struct FrugalosClient<S> {
+    buckets: Arc<AtomicImmut<HashMap<BucketId, Bucket<S>>>>,
 }
-impl FrugalosClient {
-    pub(crate) fn new(buckets: Arc<AtomicImmut<HashMap<BucketId, Bucket>>>) -> Self {
+impl<S> FrugalosClient<S>
+where
+    S: Spawn + Send + Clone + 'static,
+{
+    pub(crate) fn new(buckets: Arc<AtomicImmut<HashMap<BucketId, Bucket<S>>>>) -> Self {
         FrugalosClient { buckets }
     }
-    pub fn request(&self, bucket_id: BucketId) -> Request {
+    pub fn request(&self, bucket_id: BucketId) -> Request<S> {
         Request::new(self, bucket_id)
     }
     pub fn segment_count(&self, bucket_id: &BucketId) -> Option<u16> {
@@ -41,7 +45,7 @@ impl FrugalosClient {
             .map(|b| b.segments().len() as u16)
     }
 }
-impl fmt::Debug for FrugalosClient {
+impl<S> fmt::Debug for FrugalosClient<S> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "FrugalosClient {{ .. }}")
     }
@@ -60,15 +64,18 @@ macro_rules! try_get_bucket {
     };
 }
 
-pub struct Request<'a> {
-    client: &'a FrugalosClient,
+pub struct Request<'a, S> {
+    client: &'a FrugalosClient<S>,
     bucket_id: BucketId,
     deadline: Deadline,
     expect: Expect,
     parent: SpanHandle,
 }
-impl<'a> Request<'a> {
-    pub fn new(client: &'a FrugalosClient, bucket_id: BucketId) -> Self {
+impl<'a, S> Request<'a, S>
+where
+    S: Spawn + Send + Clone + 'static,
+{
+    pub fn new(client: &'a FrugalosClient<S>, bucket_id: BucketId) -> Self {
         Request {
             client,
             bucket_id,

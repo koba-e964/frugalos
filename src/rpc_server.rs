@@ -1,4 +1,5 @@
 use cannyls;
+use fibers::Spawn;
 use fibers_rpc::server::{HandleCall, Reply, ServerBuilder as RpcServerBuilder};
 use frugalos_core::tracer::{SpanExt, ThreadLocalTracer};
 use futures::Future;
@@ -15,14 +16,17 @@ use {Error, ErrorKind};
 use daemon::FrugalosDaemonHandle;
 
 #[derive(Debug, Clone)]
-pub struct RpcServer {
-    client: FrugalosClient,
+pub struct RpcServer<S> {
+    client: FrugalosClient<S>,
     daemon: FrugalosDaemonHandle,
     tracer: ThreadLocalTracer,
 }
-impl RpcServer {
+impl<S> RpcServer<S>
+where
+    S: Spawn + Send + Clone + 'static,
+{
     pub fn register(
-        client: FrugalosClient,
+        client: FrugalosClient<S>,
         daemon: FrugalosDaemonHandle,
         builder: &mut RpcServerBuilder,
         tracer: ThreadLocalTracer,
@@ -61,7 +65,10 @@ impl RpcServer {
         span
     }
 }
-impl HandleCall<rpc::DeleteObjectRpc> for RpcServer {
+impl<S> HandleCall<rpc::DeleteObjectRpc> for RpcServer<S>
+where
+    S: Spawn + Send + Clone + 'static,
+{
     fn handle_call(&self, request: rpc::ObjectRequest) -> Reply<rpc::DeleteObjectRpc> {
         let mut span = self.span_from_object_request("delete_object_rpc", &request);
         let future = self
@@ -90,7 +97,10 @@ impl HandleCall<rpc::DeleteObjectRpc> for RpcServer {
         )
     }
 }
-impl HandleCall<rpc::DeleteObjectByVersionRpc> for RpcServer {
+impl<S> HandleCall<rpc::DeleteObjectByVersionRpc> for RpcServer<S>
+where
+    S: Spawn + Send + Clone + 'static,
+{
     fn handle_call(&self, request: rpc::VersionRequest) -> Reply<rpc::DeleteObjectByVersionRpc> {
         let future = self
             .client
@@ -100,7 +110,10 @@ impl HandleCall<rpc::DeleteObjectByVersionRpc> for RpcServer {
         Reply::future(future.map_err(into_rpc_error).then(Ok))
     }
 }
-impl HandleCall<rpc::DeleteObjectsByRangeRpc> for RpcServer {
+impl<S> HandleCall<rpc::DeleteObjectsByRangeRpc> for RpcServer<S>
+where
+    S: Spawn + Send + Clone + 'static,
+{
     fn handle_call(&self, request: rpc::RangeRequest) -> Reply<rpc::DeleteObjectsByRangeRpc> {
         let future = self
             .client
@@ -110,7 +123,10 @@ impl HandleCall<rpc::DeleteObjectsByRangeRpc> for RpcServer {
         Reply::future(future.map_err(into_rpc_error).then(Ok))
     }
 }
-impl HandleCall<rpc::DeleteObjectsByPrefixRpc> for RpcServer {
+impl<S> HandleCall<rpc::DeleteObjectsByPrefixRpc> for RpcServer<S>
+where
+    S: Spawn + Send + Clone + 'static,
+{
     fn handle_call(&self, request: rpc::PrefixRequest) -> Reply<rpc::DeleteObjectsByPrefixRpc> {
         let future = self
             .client
@@ -120,7 +136,10 @@ impl HandleCall<rpc::DeleteObjectsByPrefixRpc> for RpcServer {
         Reply::future(future.map_err(into_rpc_error).then(Ok))
     }
 }
-impl HandleCall<rpc::GetObjectRpc> for RpcServer {
+impl<S> HandleCall<rpc::GetObjectRpc> for RpcServer<S>
+where
+    S: Spawn + Send + Clone + 'static,
+{
     fn handle_call(&self, request: rpc::ObjectRequest) -> Reply<rpc::GetObjectRpc> {
         let mut span = self.span_from_object_request("get_object_rpc", &request);
         let future = self
@@ -151,7 +170,10 @@ impl HandleCall<rpc::GetObjectRpc> for RpcServer {
         )
     }
 }
-impl HandleCall<rpc::HeadObjectRpc> for RpcServer {
+impl<S> HandleCall<rpc::HeadObjectRpc> for RpcServer<S>
+where
+    S: Spawn + Send + Clone + 'static,
+{
     fn handle_call(&self, request: rpc::HeadObjectRequest) -> Reply<rpc::HeadObjectRpc> {
         if request.check_storage {
             let future = self
@@ -172,7 +194,10 @@ impl HandleCall<rpc::HeadObjectRpc> for RpcServer {
         }
     }
 }
-impl HandleCall<rpc::PutObjectRpc> for RpcServer {
+impl<S> HandleCall<rpc::PutObjectRpc> for RpcServer<S>
+where
+    S: Spawn + Send + Clone + 'static,
+{
     fn handle_call(&self, request: rpc::PutObjectRequest) -> Reply<rpc::PutObjectRpc> {
         let future = self
             .client
@@ -183,7 +208,10 @@ impl HandleCall<rpc::PutObjectRpc> for RpcServer {
         Reply::future(future.map_err(into_rpc_error).then(Ok))
     }
 }
-impl HandleCall<rpc::ListObjectsRpc> for RpcServer {
+impl<S> HandleCall<rpc::ListObjectsRpc> for RpcServer<S>
+where
+    S: Spawn + Send + Clone + 'static,
+{
     fn handle_call(&self, request: rpc::SegmentRequest) -> Reply<rpc::ListObjectsRpc> {
         let future = self
             .client
@@ -193,7 +221,10 @@ impl HandleCall<rpc::ListObjectsRpc> for RpcServer {
     }
 }
 
-impl HandleCall<rpc::GetLatestVersionRpc> for RpcServer {
+impl<S> HandleCall<rpc::GetLatestVersionRpc> for RpcServer<S>
+where
+    S: Spawn + Send + Clone + 'static,
+{
     fn handle_call(&self, request: rpc::SegmentRequest) -> Reply<rpc::GetLatestVersionRpc> {
         let future = self
             .client
@@ -203,12 +234,18 @@ impl HandleCall<rpc::GetLatestVersionRpc> for RpcServer {
     }
 }
 
-impl HandleCall<rpc::StopRpc> for RpcServer {
+impl<S> HandleCall<rpc::StopRpc> for RpcServer<S>
+where
+    S: Spawn + Send + Clone + 'static,
+{
     fn handle_call(&self, (): ()) -> Reply<rpc::StopRpc> {
         Reply::future(self.daemon.stop().map_err(into_rpc_error2).then(Ok))
     }
 }
-impl HandleCall<rpc::TakeSnapshotRpc> for RpcServer {
+impl<S> HandleCall<rpc::TakeSnapshotRpc> for RpcServer<S>
+where
+    S: Spawn + Send + Clone + 'static,
+{
     fn handle_call(&self, (): ()) -> Reply<rpc::TakeSnapshotRpc> {
         // TODO: cast?
         self.daemon.take_snapshot();

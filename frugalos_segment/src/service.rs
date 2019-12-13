@@ -33,8 +33,8 @@ pub struct Service<S> {
     raft_service: frugalos_raft::ServiceHandle,
     mds_service: RaftMdsService,
     device_registry: DeviceRegistry,
-    command_tx: mpsc::Sender<Command>,
-    command_rx: mpsc::Receiver<Command>,
+    command_tx: mpsc::Sender<Command<S>>,
+    command_rx: mpsc::Receiver<Command<S>>,
     mds_alive: bool,
     mds_config: FrugalosMdsConfig,
     // Senders of `SegmentNode`s
@@ -81,7 +81,7 @@ where
     }
 
     /// サービスを操作するためのハンドルを返す。
-    pub fn handle(&self) -> ServiceHandle {
+    pub fn handle(&self) -> ServiceHandle<S> {
         ServiceHandle {
             logger: self.logger.clone(),
             mds: self.mds_service.handle(),
@@ -140,7 +140,7 @@ where
         &self.device_registry
     }
 
-    fn handle_command(&mut self, command: Command) {
+    fn handle_command(&mut self, command: Command<S>) {
         match command {
             Command::AddNode(node_id, device, client, cluster, config) => {
                 // TODO: error handling
@@ -242,21 +242,24 @@ where
 
 /// サービスを操作するためのハンドル。
 #[derive(Clone)]
-pub struct ServiceHandle {
+pub struct ServiceHandle<S> {
     logger: Logger,
     mds: MdsHandle,
     device_registry: DeviceRegistryHandle,
-    command_tx: mpsc::Sender<Command>,
+    command_tx: mpsc::Sender<Command<S>>,
     repair_concurrency: Arc<Mutex<RepairConcurrency>>,
 }
-impl ServiceHandle {
+impl<S> ServiceHandle<S>
+where
+    S: Spawn + Send + Clone + 'static,
+{
     // FIXME: 将来的には`client`と`cluster`は統合可能(前者から後者を引ける)
     /// サービスにノードを登録する。
     pub fn add_node(
         &self,
         node_id: NodeId,
         device: CreateDeviceHandle,
-        client: Client,
+        client: Client<S>,
         cluster: ClusterMembers,
         // NOTE: "前回の状態"は raft だけに限らないので raft を意識しない
         discard_former_state: bool,
@@ -335,26 +338,29 @@ struct RaftConfig {
 }
 
 #[allow(clippy::large_enum_variant)]
-enum Command {
+enum Command<S> {
     AddNode(
         NodeId,
         CreateDeviceHandle,
-        StorageClient,
+        StorageClient<S>,
         ClusterMembers,
         RaftConfig,
     ),
     SetRepairConfig(RepairConfig),
 }
 
-struct SegmentNode {
+struct SegmentNode<S> {
     logger: Logger,
     node: Node,
-    synchronizer: Synchronizer,
+    synchronizer: Synchronizer<S>,
     segment_node_command_rx: mpsc::Receiver<SegmentNodeCommand>,
 }
-impl SegmentNode {
+impl<S> SegmentNode<S>
+where
+    S: Spawn + Send + Clone + 'static,
+{
     #[allow(clippy::too_many_arguments)]
-    pub fn new<S>(
+    pub fn new(
         // TODO: service: &Service<S>,
         logger: &Logger,
         spawner: S,
@@ -365,14 +371,11 @@ impl SegmentNode {
 
         node_id: NodeId,
         device: DeviceHandle,
-        service_handle: ServiceHandle,
-        client: StorageClient,
+        service_handle: ServiceHandle<S>,
+        client: StorageClient<S>,
         cluster: ClusterMembers,
         segment_node_command_rx: mpsc::Receiver<SegmentNodeCommand>,
-    ) -> Result<Self>
-    where
-        S: Clone + Spawn + Send + 'static,
-    {
+    ) -> Result<Self> {
         let logger = logger.new(o!("node" => node_id.local_id.to_string()));
 
         // TODO: 正式な口を用意する
@@ -467,7 +470,10 @@ impl SegmentNode {
         }
     }
 }
-impl Future for SegmentNode {
+impl<S> Future for SegmentNode<S>
+where
+    S: Spawn + Send + Clone + 'static,
+{
     type Item = ();
     type Error = ();
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {

@@ -1,4 +1,5 @@
 use cannyls::deadline::Deadline;
+use fibers::Spawn;
 use fibers_rpc::client::ClientServiceHandle as RpcServiceHandle;
 use futures::future::Either;
 use futures::{self, Future};
@@ -26,18 +27,22 @@ pub mod storage; // TODO: private
 
 /// セグメントにアクセスるために使用するクライアント。
 #[derive(Clone)]
-pub struct Client {
+pub struct Client<S> {
     logger: Logger,
     mds: MdsClient,
-    pub(crate) storage: StorageClient, // TODO: private
+    pub(crate) storage: StorageClient<S>, // TODO: private
 }
-impl Client {
+impl<S> Client<S>
+where
+    S: Spawn + Send + Clone + 'static,
+{
     /// 新しい`Client`インスタンスを生成する。
     pub fn new(
         logger: Logger,
         rpc_service: RpcServiceHandle,
         config: ClientConfig,
         ec: Option<ErasureCoder>,
+        spawner: S,
     ) -> Result<Self> {
         let mds = MdsClient::new(
             logger.clone(),
@@ -45,7 +50,13 @@ impl Client {
             config.cluster.clone(),
             config.mds.clone(),
         );
-        let storage = track!(StorageClient::new(logger.clone(), config, rpc_service, ec))?;
+        let storage = track!(StorageClient::new(
+            logger.clone(),
+            config,
+            rpc_service,
+            ec,
+            spawner
+        ))?;
         Ok(Client {
             logger,
             mds,

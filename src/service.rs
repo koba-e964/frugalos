@@ -54,7 +54,7 @@ pub struct Service<S> {
     // クラスタ全体の情報
     seqno_to_device: HashMap<u32, PhysicalDevice>,
 
-    buckets: Arc<AtomicImmut<HashMap<BucketId, Bucket>>>,
+    buckets: Arc<AtomicImmut<HashMap<BucketId, Bucket<S>>>>,
     bucket_no_to_id: HashMap<u32, BucketId>,
 
     servers: HashMap<ServerId, Server>,
@@ -63,6 +63,9 @@ pub struct Service<S> {
 
     // 起動済みのノード一覧
     spawned_nodes: HashSet<NodeId>,
+
+    // タスクの spawn を行うオブジェクト
+    spawner: S,
 
     recovery_request: Option<RecoveryRequest>,
 }
@@ -86,7 +89,7 @@ where
     ) -> Result<Self> {
         let frugalos_segment_service = track!(SegmentService::new(
             logger.clone(),
-            spawner,
+            spawner.clone(),
             rpc_service.clone(),
             rpc,
             raft_service.handle(),
@@ -107,11 +110,12 @@ where
             bucket_no_to_id: HashMap::new(),
             servers: HashMap::new(),
             spawned_nodes: HashSet::new(),
+            spawner,
             recovery_request,
             segment_config,
         })
     }
-    pub fn client(&self) -> FrugalosClient {
+    pub fn client(&self) -> FrugalosClient<S> {
         FrugalosClient::new(self.buckets.clone())
     }
     pub fn stop(&mut self) {
@@ -177,6 +181,7 @@ where
             self.rpc_service.clone(),
             &bucket_config,
             self.segment_config.clone(),
+            self.spawner.clone().boxed(),
         ))?;
         let mut buckets = (&*self.buckets.load()).clone();
         buckets.insert(id, bucket);
@@ -217,7 +222,7 @@ where
                         device: self.seqno_to_device[&device_no].id.clone().into_string(),
                     })
                     .collect();
-                track!(bucket.update_segment(segment_no, members))?;
+                track!(bucket.update_segment(segment_no, members, self.spawner.clone().boxed()))?;
                 segment = bucket.segments()[segment_no as usize].clone();
             }
             self.buckets.store(buckets);
